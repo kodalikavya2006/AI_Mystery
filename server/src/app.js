@@ -52,6 +52,8 @@ export function createApp({generationService=generateMystery}={}){
     }
     next();
   });
+  if(config.nodeEnv==='development')app.get('/',(req,res)=>res.redirect(config.clientUrl));
+  api.get('/',(req,res)=>ok(res,{service:'AI Mystery Room API',health:'/api/v1/health'}));
   app.get('/api/v1/health',(req,res)=>ok(res,{status:'ok',database:mongoose.connection.readyState===1?'connected':'disconnected'}));
 
   api.post('/mysteries',generationLimit,async(req,res,next)=>{

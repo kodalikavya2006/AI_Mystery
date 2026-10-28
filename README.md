@@ -54,7 +54,7 @@ Gemini requests and final answer evaluation run only on the server. Active case 
 
 ## Deployment
 
-Deploy the frontend and API as separate services, set all environment variables in each host's secret/configuration settings, and use a managed MongoDB service. Set `CLIENT_URL` to the exact deployed frontend origin and `VITE_API_URL` to the deployed API's `/api/v1` base URL at frontend build time. Use HTTPS and configure the cookie/CORS policy for the actual origins. Smoke test health, case creation, ownership isolation, hint limits, accusation, refresh of verdicts, and history after deployment.
+The repository includes a Render Blueprint for a single-service deployment. Express serves the built React app and API from one HTTPS origin. Follow [DEPLOYMENT.md](./DEPLOYMENT.md) to connect GitHub, configure MongoDB Atlas and Gemini secrets, deploy, and verify the live app.
 
 ## Known implementation boundaries
 

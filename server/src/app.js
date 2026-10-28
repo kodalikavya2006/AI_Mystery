@@ -5,13 +5,16 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import mongoose from 'mongoose';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { Mystery, Attempt, InvestigationProgress } from './models.js';
 import { generateMystery, generateHint } from './ai.js';
 
 const api=express.Router();
+const clientDist=resolve(dirname(fileURLToPath(import.meta.url)),'../../client/dist');
 const sessionSecret=process.env.SESSION_SECRET||'local-development-only-change-me-please';
-const sessionCookie={httpOnly:true,secure:config.nodeEnv==='production',sameSite:config.nodeEnv==='production'?'none':'lax',path:'/',maxAge:30*24*60*60*1000};
+const sessionCookie={httpOnly:true,secure:config.nodeEnv==='production',sameSite:'lax',path:'/',maxAge:30*24*60*60*1000};
 const generationLimit=rateLimit({windowMs:60*60*1000,limit:config.nodeEnv==='production'?5:20,standardHeaders:true,legacyHeaders:false,message:{success:false,error:{code:'RATE_LIMITED',message:'Too many case generation requests. Try again later.'}}});
 const hintLimit=rateLimit({windowMs:60*60*1000,limit:30,standardHeaders:true,legacyHeaders:false,message:{success:false,error:{code:'RATE_LIMITED',message:'Too many hint requests. Try again later.'}}});
 const retrievalLimit=rateLimit({windowMs:15*60*1000,limit:120,standardHeaders:true,legacyHeaders:false,message:{success:false,error:{code:'RATE_LIMITED',message:'Too many case retrieval requests. Try again shortly.'}}});
@@ -71,6 +74,11 @@ export function createApp({generationService=generateMystery}={}){
   api.post('/mysteries/:id/accusation',accusationLimit,async(req,res,next)=>{try{const m=await owned(req,res);if(!m)return;if(m.status!=='active')return defaultError(res,409,'CASE_CLOSED','An accusation has already been recorded for this case.');const suspectId=req.body?.suspectId;if(!m.suspects.some(s=>s.id===suspectId))return defaultError(res,400,'INVALID_SUSPECT','Choose a suspect from this case.');const isCorrect=suspectId===m.solution.culpritId;const attempt=await Attempt.create({mysteryId:m._id,sessionId:sessionId(req),selectedSuspectId:suspectId,isCorrect,hintsUsed:m.hintsUsed});m.status=isCorrect?'solved':'failed';m.completedAt=new Date();await m.save();return ok(res,{isCorrect,selectedSuspectId:suspectId,verdict:isCorrect?'correct':'incorrect',solution:{culpritId:m.solution.culpritId,culpritName:m.suspects.find(s=>s.id===m.solution.culpritId)?.name,motive:m.solution.motive,method:m.solution.method,explanation:m.solution.explanation,supportingEvidenceIds:m.solution.supportingEvidenceIds}});}catch(e){if(e.code===11000)return defaultError(res,409,'ACCUSATION_RECORDED','A final accusation has already been recorded.');next(e);}});
   api.delete('/mysteries/:id',async(req,res,next)=>{try{const m=await owned(req,res);if(!m)return;if(m.status==='active')m.status='abandoned';m.updatedAt=new Date();await m.save();return ok(res,{id:String(m._id),status:m.status});}catch(e){next(e);}});
   app.use('/api/v1',api);
+  app.use('/api/v1',(req,res)=>defaultError(res,404,'NOT_FOUND','This API route does not exist.'));
+  if(config.nodeEnv==='production'){
+    app.use(express.static(clientDist,{index:false}));
+    app.get('*',(req,res,next)=>res.sendFile(resolve(clientDist,'index.html'),error=>{if(error)next(error);}));
+  }
   app.use((req,res)=>defaultError(res,404,'NOT_FOUND','This API route does not exist.'));
   app.use((err,req,res,next)=>{if(res.headersSent)return next(err);const requestId=crypto.randomUUID();console.error(JSON.stringify({requestId,error:err.message,code:err.code}));return defaultError(res,500,'INTERNAL_ERROR',`The request could not be completed. Reference: ${requestId}`);});
   return app;
